@@ -4,17 +4,17 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 from fpdf import FPDF
 import plotly.express as px
 from gupshup_sender import send_gupshup_whatsapp
-from textwrap import dedent
 
 SALES_FILE = "sales.csv"
 PAYMENTS_FILE = "payments.csv"
 USERS_FILE = "users.json"
 COMMISSION_PER_BUNCH = 20
+SESSION_TIMEOUT_MINUTES = 15
 
 # Known customers map
 CUSTOMER_WHATSAPP_MAP = {
@@ -23,14 +23,26 @@ CUSTOMER_WHATSAPP_MAP = {
     "os2": "+919848228523"
 }
 
+
 def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            users = json.load(f)
+            return users
+    except Exception as e:
+        print("❌ JSON Load Error:", e)
+        return {}
 
 def authenticate(username, password, users):
-    return username in users and users[username] == password
+    username = username.strip()
+    password = password.strip()
+    if username in users:
+        return users[username]["password"] == password
+    return False
+
+def is_admin(username):
+    users = load_users()
+    return users.get(username, {}).get("role") == "admin"
 
 def initialize_file(file_path, columns):
     if not os.path.exists(file_path):
@@ -52,7 +64,9 @@ def load_sales_table():
     df["total"] = pd.to_numeric(df["total"], errors="coerce").fillna(0)
     df["Commission"] = df["bunches"] * COMMISSION_PER_BUNCH
     df["Final Amount"] = df["total"] - df["Commission"]
+    df = df[::-1].reset_index(drop=True)  # 🔁 Sort with latest entry at top
     return df
+
 
 def load_payments():
     clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount"])
@@ -82,7 +96,6 @@ def generate_payment_tracking(total_summary, payments):
     logs = logs.sort_values(by=["name", "date", "row_index"]).reset_index(drop=True)
     logs["Total Paid"] = 0
     logs["Remaining"] = 0
-
     for cust in logs["name"].unique():
         cust_mask = logs["name"] == cust
         cust_df = logs.loc[cust_mask].copy()
@@ -90,7 +103,6 @@ def generate_payment_tracking(total_summary, payments):
         total_amt = total_summary.loc[total_summary["name"] == cust, "Total Amount"].values[0]
         cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
         logs.loc[cust_mask, ["Total Paid", "Remaining"]] = cust_df[["Total Paid", "Remaining"]]
-
     logs = logs.sort_values(by="row_index", ascending=False).reset_index(drop=True)
     logs["date"] = logs["date"].dt.strftime("%d-%b-%Y")
     return logs
@@ -109,10 +121,36 @@ def generate_pdf(df):
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
+def generate_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, index=False, sheet_name="Sheet1")
+    return output.getvalue()
+
+def add_sale_entry(date, name, bunches, total):
+    df = pd.read_csv(SALES_FILE)
+    new_row = {"date": date, "name": name, "bunches": bunches, "total": total}
+    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(SALES_FILE, index=False)
+
+def add_payment_entry(name, date, amount):
+    df = pd.read_csv(PAYMENTS_FILE)
+    new_row = {"name": name, "date": date, "paid_amount": amount}
+    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(PAYMENTS_FILE, index=False)
+
+def check_session_timeout():
+    if "login_time" in st.session_state:
+        if datetime.now() - st.session_state.login_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            st.warning("⏳ Session expired. Please log in again.")
+            st.session_state.logged_in = False
+            st.rerun()
+
 def dashboard():
+    check_session_timeout()
     with st.sidebar:
         st.write(f"👤 `{st.session_state.username}`")
-        if st.button("🔓 Logout"): st.session_state.logged_in = False; st.rerun()
+        if st.button("🔓 Logout"):
+            st.session_state.logged_in = False
+            st.rerun()
         if st.button("🗑 Reset Data"):
             initialize_file(SALES_FILE, ["date", "name", "bunches", "total"])
             initialize_file(PAYMENTS_FILE, ["name", "date", "paid_amount"])
@@ -124,17 +162,18 @@ def dashboard():
     df_payments = load_payments()
     per_entry_summary, total_summary = generate_customer_summary(df_sales)
 
-    st.subheader("📥 Enter Sale")
-    with st.form("sale_form"):
-        date = st.date_input("Date", datetime.today())
-        name = st.text_input("Customer Name")
-        bunches = st.number_input("Bunches", min_value=1)
-        total = st.number_input("Total ₹", min_value=1)
-        submit = st.form_submit_button("Add Sale")
-    if submit:
-        add_sale_entry(date.strftime("%d-%b-%Y"), name, bunches, total)
-        st.session_state.last_customer = name
-        st.success("✅ Sale added!"); st.rerun()
+    if is_admin(st.session_state.username):
+        st.subheader("📥 Enter Sale")
+        with st.form("sale_form"):
+            date = st.date_input("Date", datetime.today())
+            name = st.text_input("Customer Name")
+            bunches = st.number_input("Bunches", min_value=1)
+            total = st.number_input("Total ₹", min_value=1)
+            submit = st.form_submit_button("Add Sale")
+        if submit:
+            add_sale_entry(date.strftime("%d-%b-%Y"), name, bunches, total)
+            st.session_state.last_customer = name
+            st.success("✅ Sale added!"); st.rerun()
 
     st.subheader("📊 Sales Summary")
     if not df_sales.empty:
@@ -145,12 +184,14 @@ def dashboard():
         st.dataframe(filtered, use_container_width=True)
 
         pdf_bytes = generate_pdf(filtered)
+        excel_bytes = generate_excel(filtered)
+
         col1, col2, col3 = st.columns(3)
-
         with col1:
-            st.download_button("⬇️ Download PDF", pdf_bytes, file_name="sales_summary.pdf")
-
+            st.download_button("⬇️ PDF", pdf_bytes, file_name="sales_summary.pdf")
         with col2:
+            st.download_button("⬇️ Excel", excel_bytes, file_name="sales_summary.xlsx")
+        with col3:
             to_number = CUSTOMER_WHATSAPP_MAP.get(selected, "")
             if not to_number and selected != "All":
                 to_number = st.text_input(f"📱 Enter WhatsApp Number for {selected}", value="+91", key="sales_whatsapp_number")
@@ -169,8 +210,7 @@ def dashboard():
                         summary_lines.append(
                             f"{row['date']:<12} {int(row['bunches']):>8} ₹{int(row['total']):>9} ₹{int(row['Commission']):>11} ₹{int(row['Final Amount']):>9}"
                         )
-                    summary_text = "\n".join(summary_lines)
-                    send_gupshup_whatsapp(selected, summary_text, fallback_number=to_number)
+                    send_gupshup_whatsapp(selected, "\n".join(summary_lines), fallback_number=to_number)
                     st.success(f"✅ Sent to {to_number}")
                 else:
                     st.warning("⚠️ No sales data to send.")
@@ -209,12 +249,14 @@ def dashboard():
             st.markdown(f"**Summary:** Total Paid ₹{filtered['paid_amount'].sum()} | Remaining ₹{filtered['Remaining'].iloc[-1]}")
 
         pdf_bytes = generate_pdf(filtered)
-        col3, col4, col5, col6 = st.columns(4)
+        excel_bytes = generate_excel(filtered)
 
+        col3, col4, col5 = st.columns(3)
         with col3:
             st.download_button("⬇️ PDF", pdf_bytes, file_name="payment_tracker.pdf")
-
         with col4:
+            st.download_button("⬇️ Excel", excel_bytes, file_name="payment_tracker.xlsx")
+        with col5:
             if selected_name != "All":
                 to_number = CUSTOMER_WHATSAPP_MAP.get(selected_name, "")
                 if not to_number:
@@ -233,24 +275,11 @@ def dashboard():
                     else:
                         st.warning("⚠️ No payments or number invalid.")
 
-        with col5:
-            if not filtered.empty:
-                delete_idx = st.number_input("Delete row index", min_value=0, max_value=len(filtered) - 1, step=1)
-                if st.button("❌ Delete Payment"):
-                    delete_payment(filtered.index[delete_idx])
-                    st.success("✅ Deleted"); st.rerun()
-            else:
-                st.warning("⚠️ No records to delete.")
-
-def add_sale_entry(date, name, bunches, total):
-    df = pd.read_csv(SALES_FILE)
-    new_row = {"date": date, "name": name, "bunches": bunches, "total": total}
-    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(SALES_FILE, index=False)
-
-def add_payment_entry(name, date, amount):
-    df = pd.read_csv(PAYMENTS_FILE)
-    new_row = {"name": name, "date": date, "paid_amount": amount}
-    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(PAYMENTS_FILE, index=False)
+        if not filtered.empty:
+            delete_idx = st.number_input("Delete row index", min_value=0, max_value=len(filtered) - 1, step=1)
+            if st.button("❌ Delete Payment"):
+                delete_payment(filtered.index[delete_idx])
+                st.success("✅ Deleted"); st.rerun()
 
 def main():
     st.set_page_config(page_title="Banana Tracker", layout="wide")
@@ -266,6 +295,7 @@ def main():
         if submitted and authenticate(username, password, load_users()):
             st.session_state.logged_in = True
             st.session_state.username = username
+            st.session_state.login_time = datetime.now()
             st.rerun()
         else:
             st.error("❌ Invalid credentials")
