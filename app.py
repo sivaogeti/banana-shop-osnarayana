@@ -187,6 +187,7 @@ def dashboard():
         default_idx = 0 if "last_customer" not in st.session_state else names.index(st.session_state.last_customer)
         selected = st.selectbox("Filter Customer", ["All"] + names, index=default_idx+1)
         filtered = df_sales if selected == "All" else df_sales[df_sales["name"] == selected]
+        selected_name = selected  # 🔁 Fix: define selected_name for use in WhatsApp
         st.dataframe(filtered, use_container_width=True)
 
         pdf_bytes = generate_pdf(filtered)
