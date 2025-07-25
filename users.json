@@ -1,4 +1,10 @@
 {
-  "sai": "banana123", 
-  "mrk": "fruit456" 
+  "sai": {
+    "password": "banana123",
+    "role": "admin"
+  },
+  "mrk": {
+    "password": "fruit456",
+    "role": "viewer"
+  }
 }
