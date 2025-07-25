@@ -13,7 +13,7 @@ from datetime import datetime
 from io import BytesIO
 from fpdf import FPDF
 import plotly.express as px
-from whatsapp_sender import send_whatsapp, send_whatsapp_with_pdf
+#from whatsapp_sender import send_whatsapp, send_whatsapp_with_pdf
 from gupshup_sender import send_gupshup_whatsapp
 from textwrap import dedent
 
