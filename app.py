@@ -196,12 +196,27 @@ def dashboard():
             st.download_button("⬇️ Download PDF", pdf_bytes, file_name="sales_summary.pdf")
         with col2:
             if st.button("📤 Send WhatsApp"):
-                filename = f"sales_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-                pdf_bytes = generate_pdf(filtered)
-                #send_whatsapp_with_pdf("📊 Sales Report", pdf_bytes, filename, to_number="+919008030624")
-                message = "💰 Your payment summary is ready. Please refer to the app for full report."
-                send_gupshup_whatsapp(selected_name, message, fallback_number="+919008030624")
-                st.success("✅ Sent")
+                if not filtered.empty:
+                    summary_lines = [
+                        f"📊 Sales Summary for {selected_name}",
+                        f"{'Date':<12} {'Bunches':>8} {'Total':>10} {'Commission':>12} {'Final':>10}",
+                        "-" * 60
+                    ]
+            
+                    for _, row in filtered.iterrows():
+                        date = row["date"]
+                        bunches = int(row["bunches"])
+                        total = f"₹{int(row['total'])}"
+                        commission = f"₹{int(row['Commission'])}"
+                        final = f"₹{int(row['Final Amount'])}"
+                        summary_lines.append(f"{date:<12} {bunches:>8} {total:>10} {commission:>12} {final:>10}")
+            
+                    summary_text = "\n".join(summary_lines)
+                    send_gupshup_whatsapp(selected_name, summary_text, fallback_number="+919008030624")
+                    st.success("✅ Sent to WhatsApp")
+                else:
+                    st.warning("⚠️ No sales to send.")
+
 
         with col3:
             if st.button("📧 Send Email"):
