@@ -213,7 +213,7 @@ def dashboard():
             
                     summary_text = "\n".join(summary_lines)
                     send_gupshup_whatsapp(selected_name, summary_text, fallback_number="+919008030624")
-                    st.success("✅ Sent to WhatsApp")
+                    st.success("✅ Sent to {to_number}")
                 else:
                     st.warning("⚠️ No sales to send.")
 
