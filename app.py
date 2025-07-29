@@ -18,7 +18,7 @@ SESSION_TIMEOUT_MINUTES = 15
 
 CUSTOMER_WHATSAPP_MAP = {
     "os1": "+919008030624",
-    "badri": "+917989502014",
+    "badri": "+917989502914",
     "os2": "+919848228523"
 }
 
