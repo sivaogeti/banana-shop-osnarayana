@@ -4,14 +4,14 @@ import requests
 # Hybrid mapping (static + dynamic fallback)
 CUSTOMER_WHATSAPP_MAP = {
     "os1": "+919008030624",
-    "badri": "+917989502014",
+    "badri": "+917989502914",
     "os2": "+919505134645"
     # Add more if needed
 }
 
-GUPSHUP_API_KEY = "wquoxqv5af7kdj87parzqdedldwqusl3"
+GUPSHUP_API_KEY = "hzae5wibtyrailxmx1opl6dzawwgtgbn"
 GUPSHUP_SENDER = "917834811114"
-GUPSHUP_BOTNAME = "bananashopbot"
+GUPSHUP_BOTNAME = "MRBusinessbot"
 
 def send_gupshup_whatsapp(customer_name: str, message: str, fallback_number: str = ""):
     # Hybrid logic
@@ -37,3 +37,7 @@ def send_gupshup_whatsapp(customer_name: str, message: str, fallback_number: str
     response = requests.post("https://api.gupshup.io/wa/api/v1/msg", data=payload, headers=headers)
     print("✅ Gupshup Status:", response.status_code)
     print("🔁 Gupshup Response:", response.text)
+
+
+# 🔽 Test it
+send_gupshup_whatsapp("badri", "Hello! Your banana shop payment summary . 🍌")
