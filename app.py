@@ -269,7 +269,16 @@ def dashboard():
         st.success("✅ Payment recorded!"); st.rerun()
 
     st.subheader("📊 Payment Summary")
-    selected_name = st.selectbox("View Payments for", ["All"] + names, index=(names.index(st.session_state.get("last_customer")) + 1 if "last_customer" in st.session_state else 0))
+    #selected_name = st.selectbox("View Payments for", ["All"] + names, index=(names.index(st.session_state.get("last_customer")) + 1 if "last_customer" in st.session_state else 0))
+    selected_name = "All"
+    if names:
+        selected_idx = 0
+        if "last_customer" in st.session_state and st.session_state.last_customer in names:
+            selected_idx = names.index(st.session_state.last_customer)
+        selected_name = st.selectbox("View Payments for", ["All"] + names, index=selected_idx + 1)
+    else:
+        st.info("ℹ️ No customers to show in payments.")
+
 
     apply_discount = False
     discount_amount = 0
