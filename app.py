@@ -85,7 +85,9 @@ def generate_customer_summary(df):
     return df, total_summary
 
 def generate_payment_tracking(total_summary, payments, discount_map):
-    if total_summary.empty: return pd.DataFrame()
+    if total_summary.empty:
+        return pd.DataFrame()
+
     logs = payments.copy()
     logs["paid_amount"] = pd.to_numeric(logs["paid_amount"], errors="coerce").fillna(0)
     logs["date"] = pd.to_datetime(logs["date"], format="%d-%b-%Y")
@@ -94,18 +96,34 @@ def generate_payment_tracking(total_summary, payments, discount_map):
     logs["Total Paid"] = 0
     logs["Remaining"] = 0
     logs["Discount"] = 0
+
     for cust in logs["name"].unique():
         cust_mask = logs["name"] == cust
         cust_df = logs.loc[cust_mask].copy()
+
         cust_df["Total Paid"] = cust_df["paid_amount"].cumsum()
         total_amt = total_summary.loc[total_summary["name"] == cust, "Total Amount"].values[0]
+
         discount = discount_map.get(cust, 0)
-        cust_df["Discount"] = discount
-        cust_df["Remaining"] = (total_amt - discount) - cust_df["Total Paid"]
+        cust_df["Discount"] = 0
+
+        if discount > 0 and not cust_df.empty:
+            # Apply discount ONLY in the latest (last) row
+            last_idx = cust_df.index[-1]
+            cust_df.loc[last_idx, "Discount"] = discount
+
+            # For Remaining: apply discount only in that row
+            cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
+            cust_df.loc[last_idx, "Remaining"] -= discount
+        else:
+            cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
+
         logs.loc[cust_mask, ["Total Paid", "Remaining", "Discount"]] = cust_df[["Total Paid", "Remaining", "Discount"]]
+
     logs = logs.sort_values(by="row_index", ascending=False).reset_index(drop=True)
     logs["date"] = logs["date"].dt.strftime("%d-%b-%Y")
     return logs
+
 
 def generate_pdf(df):
     pdf = FPDF()
@@ -259,8 +277,8 @@ def dashboard():
     filtered = payment_table if selected_name == "All" else payment_table[payment_table["name"] == selected_name]
     st.dataframe(filtered.drop(columns=["row_index"]), use_container_width=True)
 
-    if selected_name != "All" and not filtered.empty:
-        remaining = filtered["Remaining"].iloc[-1]
+    if selected_name != "All" and not filtered.empty:        
+        remaining = filtered["Remaining"].iloc[0]  # Latest row after descending sort
         total_paid = filtered["paid_amount"].sum()
         total_discount = discount_map.get(selected_name, 0)
         st.markdown(
