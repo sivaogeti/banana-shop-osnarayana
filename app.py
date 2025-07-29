@@ -255,7 +255,10 @@ def dashboard():
     st.subheader("💰 Payment Tracker")
     with st.form("payment_form"):
         names = sorted(total_summary["name"].dropna().unique())
-        default_idx = names.index(st.session_state.get("last_customer", names[0])) if names else 0
+        #default_idx = names.index(st.session_state.get("last_customer", names[0])) if names else 0
+        default_idx = 0
+        if "last_customer" in st.session_state and st.session_state.last_customer in names:
+            default_idx = names.index(st.session_state.last_customer)
         pay_name = st.selectbox("Customer Name", names, index=default_idx)
         pay_date = st.date_input("Payment Date", datetime.today())
         pay_amount = st.number_input("Paid Amount", min_value=1)
