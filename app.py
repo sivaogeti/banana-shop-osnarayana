@@ -99,7 +99,7 @@ def generate_customer_summary(df):
     total_summary.columns = ["name", "Total Amount"]
     return df, total_summary
 
-def generate_payment_tracking(total_summary, payments):
+def generate_payment_tracking(total_summary, payments, discount_map):
     if total_summary.empty: return pd.DataFrame()
 
     logs = payments.copy()
