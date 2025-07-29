@@ -70,7 +70,10 @@ def load_payments():
     clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount", "discount"])
     df = pd.read_csv(PAYMENTS_FILE)
     df["paid_amount"] = pd.to_numeric(df["paid_amount"], errors="coerce").fillna(0)
-    df["discount"] = pd.to_numeric(df.get("discount", 0), errors="coerce").fillna(0)
+    if "discount" not in df.columns:
+        df["discount"] = 0
+    else:
+        df["discount"] = pd.to_numeric(df["discount"], errors="coerce").fillna(0)
     return df
 
 def add_sale_entry(date, name, bunches, total):
