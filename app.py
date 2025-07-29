@@ -332,11 +332,11 @@ def dashboard():
                 if not filtered.empty and to_number and to_number != "+91":
                     summary_lines = [
                         f"💰 Payment Summary for {selected_name}",
-                        f"{'Date':<12} {'Paid':>6} {'Total Paid':>12} {'Remaining':>12}",
-                        "-" * 44
+                        f"{'Date':<12} {'Paid':>6} {'Discount':>9} {'Total Paid':>12} {'Remaining':>12}",
+                        "-" * 60
                     ]
                     for row in filtered.to_dict(orient="records"):
-                        summary_lines.append(f"{row['date']:<12} ₹{int(row['paid_amount']):>6} ₹{int(row['Total Paid']):>12} ₹{int(row['Remaining']):>12}")
+                        summary_lines.append(f"{row['date']:<12} ₹{int(row['paid_amount']):>6} ₹{int(row['Discount']):>9} ₹{int(row['Total Paid']):>12} ₹{int(row['Remaining']):>12}")
                     if discount_amount:
                         summary_lines.append(f"\n🎁 Final Discount Applied: ₹{discount_amount}")
                         summary_lines.append(f"🧮 Final Remaining: ₹{remaining}")
