@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import pandas as pd
 import json
@@ -16,7 +14,7 @@ USERS_FILE = "users.json"
 COMMISSION_PER_BUNCH = 20
 SESSION_TIMEOUT_MINUTES = 15
 
-# Known customers map
+# Optional per-customer WhatsApp numbers
 CUSTOMER_WHATSAPP_MAP = {
     "os1": "+919008030624",
     "badri": "+917989502014",
@@ -64,9 +62,8 @@ def load_sales_table():
     df["total"] = pd.to_numeric(df["total"], errors="coerce").fillna(0)
     df["Commission"] = df["bunches"] * COMMISSION_PER_BUNCH
     df["Final Amount"] = df["total"] - df["Commission"]
-    df = df[::-1].reset_index(drop=True)  # 🔁 Sort with latest entry at top
+    df = df[::-1].reset_index(drop=True)  # Latest on top
     return df
-
 
 def load_payments():
     clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount"])
@@ -87,7 +84,7 @@ def generate_customer_summary(df):
     total_summary.columns = ["name", "Total Amount"]
     return df, total_summary
 
-def generate_payment_tracking(total_summary, payments):
+def generate_payment_tracking(total_summary, payments, discount_map):
     if total_summary.empty: return pd.DataFrame()
     logs = payments.copy()
     logs["paid_amount"] = pd.to_numeric(logs["paid_amount"], errors="coerce").fillna(0)
@@ -96,13 +93,16 @@ def generate_payment_tracking(total_summary, payments):
     logs = logs.sort_values(by=["name", "date", "row_index"]).reset_index(drop=True)
     logs["Total Paid"] = 0
     logs["Remaining"] = 0
+    logs["Discount"] = 0
     for cust in logs["name"].unique():
         cust_mask = logs["name"] == cust
         cust_df = logs.loc[cust_mask].copy()
         cust_df["Total Paid"] = cust_df["paid_amount"].cumsum()
         total_amt = total_summary.loc[total_summary["name"] == cust, "Total Amount"].values[0]
-        cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
-        logs.loc[cust_mask, ["Total Paid", "Remaining"]] = cust_df[["Total Paid", "Remaining"]]
+        discount = discount_map.get(cust, 0)
+        cust_df["Discount"] = discount
+        cust_df["Remaining"] = (total_amt - discount) - cust_df["Total Paid"]
+        logs.loc[cust_mask, ["Total Paid", "Remaining", "Discount"]] = cust_df[["Total Paid", "Remaining", "Discount"]]
     logs = logs.sort_values(by="row_index", ascending=False).reset_index(drop=True)
     logs["date"] = logs["date"].dt.strftime("%d-%b-%Y")
     return logs
@@ -113,15 +113,18 @@ def generate_pdf(df):
     pdf.set_font("Arial", size=10)
     col_width = pdf.w / (len(df.columns) + 1)
     for col in df.columns:
-        pdf.cell(col_width, 10, str(col), border=1)
+        if col != "row_index":
+            pdf.cell(col_width, 10, str(col), border=1)
     pdf.ln()
     for _, row in df.iterrows():
-        for item in row:
-            pdf.cell(col_width, 10, str(item), border=1)
+        for k, v in row.items():
+            if k != "row_index":
+                pdf.cell(col_width, 10, str(v), border=1)
         pdf.ln()
     return pdf.output(dest='S').encode('latin-1')
 
 def generate_excel(df):
+    df = df.drop(columns=["row_index"], errors="ignore")
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df.to_excel(writer, index=False, sheet_name="Sheet1")
@@ -161,6 +164,8 @@ def dashboard():
     df_sales = load_sales_table()
     df_payments = load_payments()
     per_entry_summary, total_summary = generate_customer_summary(df_sales)
+
+    discount_map = {}
 
     if is_admin(st.session_state.username):
         st.subheader("📥 Enter Sale")
@@ -239,48 +244,64 @@ def dashboard():
         st.session_state.last_customer = pay_name
         st.success("✅ Payment recorded!"); st.rerun()
 
-    payment_table = generate_payment_tracking(total_summary, df_payments)
-    if not payment_table.empty:
-        selected_name = st.selectbox("View Payments for", ["All"] + names, index=(names.index(st.session_state.get("last_customer")) + 1 if "last_customer" in st.session_state else 0))
-        filtered = payment_table if selected_name == "All" else payment_table[payment_table["name"] == selected_name]
-        st.dataframe(filtered, use_container_width=True)
+    st.subheader("📊 Payment Summary")
+    selected_name = st.selectbox("View Payments for", ["All"] + names, index=(names.index(st.session_state.get("last_customer")) + 1 if "last_customer" in st.session_state else 0))
 
-        if selected_name != "All" and not filtered.empty:
-            st.markdown(f"**Summary:** Total Paid ₹{filtered['paid_amount'].sum()} | Remaining ₹{filtered['Remaining'].iloc[-1]}")
+    apply_discount = False
+    discount_amount = 0
+    if selected_name != "All" and is_admin(st.session_state.username):
+        apply_discount = st.checkbox(f"🎁 Apply final discount for {selected_name}?", value=False)
+        if apply_discount:
+            discount_amount = st.number_input("Enter Discount Amount ₹", min_value=0)
+            discount_map[selected_name] = discount_amount
 
-        pdf_bytes = generate_pdf(filtered)
-        excel_bytes = generate_excel(filtered)
+    payment_table = generate_payment_tracking(total_summary, df_payments, discount_map)
+    filtered = payment_table if selected_name == "All" else payment_table[payment_table["name"] == selected_name]
+    st.dataframe(filtered.drop(columns=["row_index"]), use_container_width=True)
 
-        col3, col4, col5 = st.columns(3)
-        with col3:
-            st.download_button("⬇️ PDF", pdf_bytes, file_name="payment_tracker.pdf")
-        with col4:
-            st.download_button("⬇️ Excel", excel_bytes, file_name="payment_tracker.xlsx")
-        with col5:
-            if selected_name != "All":
-                to_number = CUSTOMER_WHATSAPP_MAP.get(selected_name, "")
-                if not to_number:
-                    to_number = st.text_input(f"📱 Enter WhatsApp Number for {selected_name}", value="+91", key="payment_whatsapp_number")
-                if st.button("📤 WhatsApp Payment"):
-                    if not filtered.empty and to_number and to_number != "+91":
-                        summary_lines = [
-                            f"💰 Payment Summary for {selected_name}",
-                            f"{'Date':<12} {'Paid':>6} {'Total Paid':>12} {'Remaining':>12}",
-                            "-" * 44
-                        ]
-                        for row in filtered.to_dict(orient="records"):
-                            summary_lines.append(f"{row['date']:<12} ₹{int(row['paid_amount']):>6} ₹{int(row['Total Paid']):>12} ₹{int(row['Remaining']):>12}")
-                        send_gupshup_whatsapp(selected_name, "\n".join(summary_lines), fallback_number=to_number)
-                        st.success(f"✅ Sent to {to_number}")
-                    else:
-                        st.warning("⚠️ No payments or number invalid.")
+    if selected_name != "All" and not filtered.empty:
+        remaining = filtered["Remaining"].iloc[-1]
+        total_paid = filtered["paid_amount"].sum()
+        total_discount = discount_map.get(selected_name, 0)
+        st.markdown(
+            f"**Summary:** Total Paid ₹{total_paid} | Discount ₹{total_discount} | Final Remaining ₹{remaining}"
+        )
 
-        if not filtered.empty:
-            delete_idx = st.number_input("Delete row index", min_value=0, max_value=len(filtered) - 1, step=1)
-            if st.button("❌ Delete Payment"):
-                delete_payment(filtered.index[delete_idx])
-                st.success("✅ Deleted"); st.rerun()
+    pdf_bytes = generate_pdf(filtered)
+    excel_bytes = generate_excel(filtered)
 
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        st.download_button("⬇️ PDF", pdf_bytes, file_name="payment_tracker.pdf")
+    with col4:
+        st.download_button("⬇️ Excel", excel_bytes, file_name="payment_tracker.xlsx")
+    with col5:
+        if selected_name != "All":
+            to_number = CUSTOMER_WHATSAPP_MAP.get(selected_name, "")
+            if not to_number:
+                to_number = st.text_input(f"📱 WhatsApp for {selected_name}", value="+91", key="payment_whatsapp_number")
+            if st.button("📤 WhatsApp Payment"):
+                if not filtered.empty and to_number and to_number != "+91":
+                    summary_lines = [
+                        f"💰 Payment Summary for {selected_name}",
+                        f"{'Date':<12} {'Paid':>6} {'Total Paid':>12} {'Remaining':>12}",
+                        "-" * 44
+                    ]
+                    for row in filtered.to_dict(orient="records"):
+                        summary_lines.append(f"{row['date']:<12} ₹{int(row['paid_amount']):>6} ₹{int(row['Total Paid']):>12} ₹{int(row['Remaining']):>12}")
+                    if discount_amount:
+                        summary_lines.append(f"\n🎁 Final Discount Applied: ₹{discount_amount}")
+                        summary_lines.append(f"🧮 Final Remaining: ₹{remaining}")
+                    send_gupshup_whatsapp(selected_name, "\n".join(summary_lines), fallback_number=to_number)
+                    st.success(f"✅ Sent to {to_number}")
+                else:
+                    st.warning("⚠️ No payments or number invalid.")
+
+    if not filtered.empty:
+        delete_idx = st.number_input("Delete row index", min_value=0, max_value=len(filtered) - 1, step=1)
+        if st.button("❌ Delete Payment"):
+            delete_payment(filtered.index[delete_idx])
+            st.success("✅ Deleted"); st.rerun()
 def main():
     st.set_page_config(page_title="Banana Tracker", layout="wide")
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
