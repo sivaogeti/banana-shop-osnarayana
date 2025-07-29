@@ -372,13 +372,14 @@ def main():
             username = st.text_input("Name")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Login")
-        if submitted and authenticate(username, password, load_users()):
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.session_state.login_time = datetime.now()
-            st.rerun()
-        else:
-            st.error("❌ Invalid credentials")
+        if submitted:
+            if authenticate(username, password, load_users()):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.session_state.login_time = datetime.now()
+                st.rerun()
+            else:
+                st.error("❌ Invalid credentials")
 
 if __name__ == "__main__":
     main()
