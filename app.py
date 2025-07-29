@@ -201,7 +201,10 @@ def dashboard():
     st.subheader("📊 Sales Summary")
     if not df_sales.empty:
         names = sorted(per_entry_summary["name"].dropna().unique())
-        default_idx = names.index(st.session_state.get("last_customer", names[0])) if "last_customer" in st.session_state else 0
+        #default_idx = names.index(st.session_state.get("last_customer", names[0])) if "last_customer" in st.session_state else 0
+        default_idx = 0
+        if "last_customer" in st.session_state and st.session_state.last_customer in names:
+            default_idx = names.index(st.session_state.last_customer)
         selected = st.selectbox("Filter Customer", ["All"] + names, index=default_idx + 1)
         filtered = df_sales if selected == "All" else df_sales[df_sales["name"] == selected]
         st.dataframe(filtered, use_container_width=True)
