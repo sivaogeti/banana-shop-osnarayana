@@ -334,7 +334,7 @@ def dashboard():
                 if not filtered.empty and to_number and to_number != "+91":
                     summary_lines = [
                         f"💰 Payment Summary for {selected_name}",
-                        f"{'Date':<12} {'Paid':>6} {'Discount':>9} {'Total Paid':>12} {'Remaining':>12}",
+                        f"{'Date':<12}   {'Paid':>6}   {'Discount':>9}   {'Total Paid':>12}   {'Remaining':>12}",
                         "-" * 60
                     ]
                     for row in filtered.to_dict(orient="records"):
