@@ -236,7 +236,7 @@ def dashboard():
                     ]
                     for _, row in filtered.iterrows():
                         summary_lines.append(
-                            f"{row['date']:<12} {int(row['bunches']):>8} ₹{int(row['total']):>9} ₹{int(row['Commission']):>11} ₹{int(row['Final Amount']):>9}"
+                            f"{row['date']:<12} {int(row['bunches']):>10} {'₹' + str(int(row['total'])):>10} {'₹' + str(int(row['Commission'])):>12} {'₹' + str(int(row['Final Amount'])):>10}"
                         )
                     send_gupshup_whatsapp(selected, "\n".join(summary_lines), fallback_number=to_number)
                     st.success(f"✅ Sent to {to_number}")
