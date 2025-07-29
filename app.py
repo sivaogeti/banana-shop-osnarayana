@@ -1,3 +1,5 @@
+# Banana Tracker - Final Enhanced app.py with Persistent Discounts
+
 import streamlit as st
 import pandas as pd
 import json
@@ -14,7 +16,6 @@ USERS_FILE = "users.json"
 COMMISSION_PER_BUNCH = 20
 SESSION_TIMEOUT_MINUTES = 15
 
-# Optional per-customer WhatsApp numbers
 CUSTOMER_WHATSAPP_MAP = {
     "os1": "+919008030624",
     "badri": "+917989502014",
@@ -62,14 +63,25 @@ def load_sales_table():
     df["total"] = pd.to_numeric(df["total"], errors="coerce").fillna(0)
     df["Commission"] = df["bunches"] * COMMISSION_PER_BUNCH
     df["Final Amount"] = df["total"] - df["Commission"]
-    df = df[::-1].reset_index(drop=True)  # Latest on top
+    df = df[::-1].reset_index(drop=True)
     return df
 
 def load_payments():
     clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount", "discount"])
     df = pd.read_csv(PAYMENTS_FILE)
     df["paid_amount"] = pd.to_numeric(df["paid_amount"], errors="coerce").fillna(0)
+    df["discount"] = pd.to_numeric(df.get("discount", 0), errors="coerce").fillna(0)
     return df
+
+def add_sale_entry(date, name, bunches, total):
+    df = pd.read_csv(SALES_FILE)
+    new_row = {"date": date, "name": name, "bunches": bunches, "total": total}
+    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(SALES_FILE, index=False)
+
+def add_payment_entry(name, date, amount, discount=0):
+    df = pd.read_csv(PAYMENTS_FILE)
+    new_row = {"name": name, "date": date, "paid_amount": amount, "discount": discount}
+    pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(PAYMENTS_FILE, index=False)
 
 def delete_payment(index_to_delete):
     df = pd.read_csv(PAYMENTS_FILE)
@@ -84,46 +96,30 @@ def generate_customer_summary(df):
     total_summary.columns = ["name", "Total Amount"]
     return df, total_summary
 
-def generate_payment_tracking(total_summary, payments, discount_map):
-    if total_summary.empty:
-        return pd.DataFrame()
+def generate_payment_tracking(total_summary, payments):
+    if total_summary.empty: return pd.DataFrame()
 
     logs = payments.copy()
     logs["paid_amount"] = pd.to_numeric(logs["paid_amount"], errors="coerce").fillna(0)
+    logs["discount"] = pd.to_numeric(logs["discount"], errors="coerce").fillna(0)
     logs["date"] = pd.to_datetime(logs["date"], format="%d-%b-%Y")
     logs["row_index"] = logs.index
     logs = logs.sort_values(by=["name", "date", "row_index"]).reset_index(drop=True)
     logs["Total Paid"] = 0
     logs["Remaining"] = 0
-    logs["Discount"] = 0
 
     for cust in logs["name"].unique():
         cust_mask = logs["name"] == cust
         cust_df = logs.loc[cust_mask].copy()
-
         cust_df["Total Paid"] = cust_df["paid_amount"].cumsum()
         total_amt = total_summary.loc[total_summary["name"] == cust, "Total Amount"].values[0]
-
-        discount = discount_map.get(cust, 0)
-        cust_df["Discount"] = 0
-
-        if discount > 0 and not cust_df.empty:
-            # Apply discount ONLY in the latest (last) row
-            last_idx = cust_df.index[-1]
-            cust_df.loc[last_idx, "Discount"] = discount
-
-            # For Remaining: apply discount only in that row
-            cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
-            cust_df.loc[last_idx, "Remaining"] -= discount
-        else:
-            cust_df["Remaining"] = total_amt - cust_df["Total Paid"]
-
-        logs.loc[cust_mask, ["Total Paid", "Remaining", "Discount"]] = cust_df[["Total Paid", "Remaining", "Discount"]]
+        cust_df["Remaining"] = total_amt - (cust_df["Total Paid"] + cust_df["discount"].cumsum())
+        logs.loc[cust_mask, ["Total Paid", "Remaining"]] = cust_df[["Total Paid", "Remaining"]]
 
     logs = logs.sort_values(by="row_index", ascending=False).reset_index(drop=True)
     logs["date"] = logs["date"].dt.strftime("%d-%b-%Y")
+    logs.rename(columns={"discount": "Discount"}, inplace=True)
     return logs
-
 
 def generate_pdf(df):
     pdf = FPDF()
@@ -323,8 +319,11 @@ def dashboard():
             st.success("✅ Deleted"); st.rerun()
 def main():
     st.set_page_config(page_title="Banana Tracker", layout="wide")
-    if "logged_in" not in st.session_state: st.session_state.logged_in = False
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+
     if st.session_state.logged_in:
+        from dashboard import dashboard
         dashboard()
     else:
         st.subheader("🔐 Login")
