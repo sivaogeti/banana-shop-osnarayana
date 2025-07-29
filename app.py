@@ -66,7 +66,7 @@ def load_sales_table():
     return df
 
 def load_payments():
-    clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount"])
+    clean_csv(PAYMENTS_FILE, ["name", "date", "paid_amount", "discount"])
     df = pd.read_csv(PAYMENTS_FILE)
     df["paid_amount"] = pd.to_numeric(df["paid_amount"], errors="coerce").fillna(0)
     return df
@@ -153,9 +153,9 @@ def add_sale_entry(date, name, bunches, total):
     new_row = {"date": date, "name": name, "bunches": bunches, "total": total}
     pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(SALES_FILE, index=False)
 
-def add_payment_entry(name, date, amount):
+def add_payment_entry(name, date, amount, discount=0):
     df = pd.read_csv(PAYMENTS_FILE)
-    new_row = {"name": name, "date": date, "paid_amount": amount}
+    new_row = {"name": name, "date": date, "paid_amount": amount, "discount": discount}
     pd.concat([df, pd.DataFrame([new_row])], ignore_index=True).to_csv(PAYMENTS_FILE, index=False)
 
 def check_session_timeout():
@@ -184,7 +184,8 @@ def dashboard():
     per_entry_summary, total_summary = generate_customer_summary(df_sales)
 
     discount_map = {}
-
+    
+    pay_discount = 0
     if is_admin(st.session_state.username):
         st.subheader("📥 Enter Sale")
         with st.form("sale_form"):
