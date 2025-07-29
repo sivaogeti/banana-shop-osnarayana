@@ -280,6 +280,7 @@ def dashboard():
         st.info("ℹ️ No customers to show in payments.")
 
 
+    
     apply_discount = False
     discount_amount = 0
     if selected_name != "All" and is_admin(st.session_state.username):
@@ -287,6 +288,20 @@ def dashboard():
         if apply_discount:
             discount_amount = st.number_input("Enter Discount Amount ₹", min_value=0)
             discount_map[selected_name] = discount_amount
+
+            # Save the discount as a payment row with ₹0 amount if not already present today
+            today_str = datetime.today().strftime("%d-%b-%Y")
+            today_entries = df_payments[
+                (df_payments["name"] == selected_name) & 
+                (df_payments["date"] == today_str) & 
+                (df_payments["paid_amount"] == 0) & 
+                (df_payments["discount"] == discount_amount)
+            ]
+            if today_entries.empty:
+                add_payment_entry(selected_name, today_str, 0, discount_amount)
+                st.success(f"✅ Discount ₹{discount_amount} recorded for {selected_name}")
+                st.rerun()
+
 
     payment_table = generate_payment_tracking(total_summary, df_payments, discount_map)
     filtered = payment_table if selected_name == "All" else payment_table[payment_table["name"] == selected_name]
