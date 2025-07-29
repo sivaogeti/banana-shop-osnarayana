@@ -231,7 +231,7 @@ def dashboard():
                         filtered["date"] = pd.to_datetime(filtered["date"]).dt.strftime("%d-%b-%Y")  # ✅ Fix here for showing wrong value in whatsapped message
                     summary_lines = [
                         f"📊 Sales Summary for {selected}",
-                        f"{'Date':<12}   {'Bunches':>8}   {'Total':>10}   {'Commission':>12}   {'Final':>10}",
+                        f"{'Date  ':<12} {'Bunches  ':>8} {'Total  ':>10} {'Commission  ':>12} {'Final  ':>10}",
                         "-" * 60
                     ]
                     for _, row in filtered.iterrows():
@@ -334,7 +334,7 @@ def dashboard():
                 if not filtered.empty and to_number and to_number != "+91":
                     summary_lines = [
                         f"💰 Payment Summary for {selected_name}",
-                        f"{'Date':<12}   {'Paid':>6}   {'Discount':>9}   {'Total Paid':>12}   {'Remaining':>12}",
+                        f"{'Date  ':<12} {'Paid  ':>6} {'Discount  ':>9} {'Total Paid  ':>12} {'Remaining  ':>12}",
                         "-" * 60
                     ]
                     for row in filtered.to_dict(orient="records"):
